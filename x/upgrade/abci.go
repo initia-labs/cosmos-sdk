@@ -26,6 +26,7 @@ func BeginBlocker(k *keeper.Keeper, ctx sdk.Context, _ abci.RequestBeginBlock) {
 	plan, found := k.GetUpgradePlan(ctx)
 
 	if !k.DowngradeVerified() {
+		ctx := ctx.WithBlockGasMeter(sdk.NewInfiniteGasMeter()).WithGasMeter(sdk.NewInfiniteGasMeter())
 		k.SetDowngradeVerified(true)
 		// This check will make sure that we are using a valid binary.
 		// It'll panic in these cases if there is no upgrade handler registered for the last applied upgrade.
