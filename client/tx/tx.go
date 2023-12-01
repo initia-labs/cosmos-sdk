@@ -243,6 +243,8 @@ func Sign(txf Factory, name string, txBuilder client.TxBuilder, overwriteSig boo
 	if signMode == signing.SignMode_SIGN_MODE_UNSPECIFIED {
 		// use the SignModeHandler's default mode if unspecified
 		signMode = txf.txConfig.SignModeHandler().DefaultMode()
+	} else if signMode == signing.SignMode_SIGN_MODE_EIP_191 {
+		return fmt.Errorf("EIP191 signing is not supported in cli")
 	}
 
 	k, err := txf.keybase.Key(name)
