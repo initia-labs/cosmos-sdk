@@ -725,7 +725,7 @@ func (app *BaseApp) runTx(mode runTxMode, txBytes []byte) (gInfo sdk.GasInfo, re
 		anteEvents = events.ToABCIEvents()
 	}
 
-	if mode == runTxModeCheck {
+	if mode == runTxModeCheck || mode == runTxModeReCheck {
 		err = app.mempool.Insert(ctx, tx)
 		if err != nil {
 			return gInfo, nil, anteEvents, priority, err
