@@ -535,7 +535,9 @@ func (app *BaseApp) GetConsensusParams(ctx sdk.Context) cmtproto.ConsensusParams
 		return cmtproto.ConsensusParams{}
 	}
 
-	cp.Abci.VoteExtensionsEnableHeight = 1
+	cp.Abci = &cmtproto.ABCIParams{
+		VoteExtensionsEnableHeight: 1,
+	}
 	return cp
 }
 
