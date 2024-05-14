@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -811,6 +812,8 @@ func (app *BaseApp) endBlock(ctx context.Context) (sdk.EndBlock, error) {
 	return endblock, nil
 }
 
+var mempoolMutex sync.Mutex
+
 // runTx processes a transaction within a given execution mode, encoded transaction
 // bytes, and the decoded transaction itself. All state transitions occur through
 // a cached Context depending on the mode provided. State only gets persisted
@@ -924,7 +927,10 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte) (gInfo sdk.GasInfo, res
 	}
 
 	if mode == execModeCheck {
+		mempoolMutex.Lock()
 		err = app.mempool.Insert(ctx, tx)
+		mempoolMutex.Unlock()
+
 		if err != nil {
 			return gInfo, nil, anteEvents, err
 		}
