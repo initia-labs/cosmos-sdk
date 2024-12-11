@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -115,10 +116,10 @@ type BaseApp struct {
 	//
 	// - finalizeBlockState: Used for FinalizeBlock, which is set based on the
 	// previous block's state. This state is committed.
-	checkState           *state
-	prepareProposalState *state
-	processProposalState *state
-	finalizeBlockState   *state
+	checkState           *atomic.Pointer[state]
+	prepareProposalState *atomic.Pointer[state]
+	processProposalState *atomic.Pointer[state]
+	finalizeBlockState   *atomic.Pointer[state]
 
 	// An inter-block write-through cache provided to the context during the ABCI
 	// FinalizeBlock call.
@@ -214,6 +215,12 @@ func NewBaseApp(
 		fauxMerkleMode:   false,
 		sigverifyTx:      true,
 		queryGasLimit:    math.MaxUint64,
+
+		// create atomic pointers
+		checkState:           new(atomic.Pointer[state]),
+		prepareProposalState: new(atomic.Pointer[state]),
+		processProposalState: new(atomic.Pointer[state]),
+		finalizeBlockState:   new(atomic.Pointer[state]),
 	}
 
 	for _, option := range options {
@@ -494,16 +501,16 @@ func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 	switch mode {
 	case execModeCheck:
 		baseState.SetContext(baseState.Context().WithIsCheckTx(true).WithMinGasPrices(app.minGasPrices))
-		app.checkState = baseState
+		app.checkState.Store(baseState)
 
 	case execModePrepareProposal:
-		app.prepareProposalState = baseState
+		app.prepareProposalState.Store(baseState)
 
 	case execModeProcessProposal:
-		app.processProposalState = baseState
+		app.processProposalState.Store(baseState)
 
 	case execModeFinalize:
-		app.finalizeBlockState = baseState
+		app.finalizeBlockState.Store(baseState)
 
 	default:
 		panic(fmt.Sprintf("invalid runTxMode for setState: %d", mode))
@@ -633,16 +640,16 @@ func validateBasicTxMsgs(msgs []sdk.Msg) error {
 func (app *BaseApp) getState(mode execMode) *state {
 	switch mode {
 	case execModeFinalize:
-		return app.finalizeBlockState
+		return app.finalizeBlockState.Load()
 
 	case execModePrepareProposal:
-		return app.prepareProposalState
+		return app.prepareProposalState.Load()
 
 	case execModeProcessProposal:
-		return app.processProposalState
+		return app.processProposalState.Load()
 
 	default:
-		return app.checkState
+		return app.checkState.Load()
 	}
 }
 
@@ -707,7 +714,7 @@ func (app *BaseApp) cacheTxContext(ctx sdk.Context, txBytes []byte) (sdk.Context
 func (app *BaseApp) preBlock(req *abci.RequestFinalizeBlock) ([]abci.Event, error) {
 	var events []abci.Event
 	if app.preBlocker != nil {
-		ctx := app.finalizeBlockState.Context().WithEventManager(sdk.NewEventManager())
+		ctx := app.finalizeBlockState.Load().Context().WithEventManager(sdk.NewEventManager())
 		rsp, err := app.preBlocker(ctx, req)
 		if err != nil {
 			return nil, err
@@ -719,7 +726,7 @@ func (app *BaseApp) preBlock(req *abci.RequestFinalizeBlock) ([]abci.Event, erro
 			// GasMeter must be set after we get a context with updated consensus params.
 			gasMeter := app.getBlockGasMeter(ctx)
 			ctx = ctx.WithBlockGasMeter(gasMeter)
-			app.finalizeBlockState.SetContext(ctx)
+			app.finalizeBlockState.Load().SetContext(ctx)
 		}
 		events = ctx.EventManager().ABCIEvents()
 	}
@@ -733,7 +740,7 @@ func (app *BaseApp) beginBlock(_ *abci.RequestFinalizeBlock) (sdk.BeginBlock, er
 	)
 
 	if app.beginBlocker != nil {
-		resp, err = app.beginBlocker(app.finalizeBlockState.Context())
+		resp, err = app.beginBlocker(app.finalizeBlockState.Load().Context())
 		if err != nil {
 			return resp, err
 		}
@@ -795,7 +802,7 @@ func (app *BaseApp) endBlock(_ context.Context) (sdk.EndBlock, error) {
 	var endblock sdk.EndBlock
 
 	if app.endBlocker != nil {
-		eb, err := app.endBlocker(app.finalizeBlockState.Context())
+		eb, err := app.endBlocker(app.finalizeBlockState.Load().Context())
 		if err != nil {
 			return endblock, err
 		}
