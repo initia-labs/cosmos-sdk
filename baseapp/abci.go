@@ -1276,7 +1276,7 @@ func (app *BaseApp) CreateQueryContext(height int64, prove bool) (sdk.Context, e
 // need historical blocks.
 func (app *BaseApp) GetBlockRetentionHeight(commitHeight int64) int64 {
 	// pruning is disabled if minRetainBlocks is zero
-	if app.minRetainBlocks == 0 {
+	if app.minRetainBlocks == 0 || app.minRetainBlocks >= uint64(commitHeight) {
 		return 0
 	}
 
