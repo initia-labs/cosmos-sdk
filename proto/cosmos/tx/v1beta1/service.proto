@@ -105,6 +105,9 @@ message GetTxsEventRequest {
   //
   // Since cosmos-sdk 0.50
   string query = 6;
+
+  // v2 is the flag to use indexer v2.
+  bool v2 = 7;
 }
 
 // OrderBy defines the sorting order

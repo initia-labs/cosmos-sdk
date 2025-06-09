@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	FlagQuery   = "query"
-	FlagType    = "type"
-	FlagOrderBy = "order_by"
+	FlagQuery     = "query"
+	FlagType      = "type"
+	FlagOrderBy   = "order_by"
+	FlagIndexerV2 = "v2"
 
 	TypeHash   = "hash"
 	TypeAccSeq = "acc_seq"
@@ -54,8 +55,14 @@ for. Each module documents its respective events under 'xx_events.md'.
 			page, _ := cmd.Flags().GetInt(flags.FlagPage)
 			limit, _ := cmd.Flags().GetInt(flags.FlagLimit)
 			orderBy, _ := cmd.Flags().GetString(FlagOrderBy)
+			indexerV2, _ := cmd.Flags().GetBool(FlagIndexerV2)
 
-			txs, err := authtx.QueryTxsByEvents(clientCtx, page, limit, query, orderBy)
+			var txs *sdk.SearchTxsResult
+			if indexerV2 {
+				txs, err = authtx.QueryTxsByEventsV2(clientCtx, page, limit, query, orderBy)
+			} else {
+				txs, err = authtx.QueryTxsByEvents(clientCtx, page, limit, query, orderBy)
+			}
 			if err != nil {
 				return err
 			}
@@ -69,6 +76,7 @@ for. Each module documents its respective events under 'xx_events.md'.
 	cmd.Flags().Int(flags.FlagLimit, querytypes.DefaultLimit, "Query number of transactions results per page returned")
 	cmd.Flags().String(FlagQuery, "", "The transactions events query per Tendermint's query semantics")
 	cmd.Flags().String(FlagOrderBy, "", "The ordering semantics (asc|dsc)")
+	cmd.Flags().Bool(FlagIndexerV2, false, "Use indexer v2, default is false")
 	_ = cmd.MarkFlagRequired(FlagQuery)
 
 	return cmd
@@ -96,6 +104,7 @@ $ %s query tx --%s=%s <sig1_base64>,<sig2_base64...>
 			}
 
 			typ, _ := cmd.Flags().GetString(FlagType)
+			indexerV2, _ := cmd.Flags().GetBool(FlagIndexerV2)
 
 			switch typ {
 			case TypeHash:
@@ -128,7 +137,12 @@ $ %s query tx --%s=%s <sig1_base64>,<sig2_base64...>
 
 				query := strings.Join(events, " AND ")
 
-				txs, err := authtx.QueryTxsByEvents(clientCtx, querytypes.DefaultPage, querytypes.DefaultLimit, query, "")
+				var txs *sdk.SearchTxsResult
+				if indexerV2 {
+					txs, err = authtx.QueryTxsByEventsV2(clientCtx, querytypes.DefaultPage, querytypes.DefaultLimit, query, "")
+				} else {
+					txs, err = authtx.QueryTxsByEvents(clientCtx, querytypes.DefaultPage, querytypes.DefaultLimit, query, "")
+				}
 				if err != nil {
 					return err
 				}
@@ -151,7 +165,13 @@ $ %s query tx --%s=%s <sig1_base64>,<sig2_base64...>
 
 				query := fmt.Sprintf("%s.%s='%s'", sdk.EventTypeTx, sdk.AttributeKeyAccountSequence, args[0])
 
-				txs, err := authtx.QueryTxsByEvents(clientCtx, querytypes.DefaultPage, querytypes.DefaultLimit, query, "")
+				var txs *sdk.SearchTxsResult
+				var err error
+				if indexerV2 {
+					txs, err = authtx.QueryTxsByEventsV2(clientCtx, querytypes.DefaultPage, querytypes.DefaultLimit, query, "")
+				} else {
+					txs, err = authtx.QueryTxsByEvents(clientCtx, querytypes.DefaultPage, querytypes.DefaultLimit, query, "")
+				}
 				if err != nil {
 					return err
 				}
@@ -175,6 +195,7 @@ $ %s query tx --%s=%s <sig1_base64>,<sig2_base64...>
 
 	flags.AddQueryFlagsToCmd(cmd)
 	cmd.Flags().String(FlagType, TypeHash, fmt.Sprintf("The type to be used when querying tx, can be one of \"%s\", \"%s\", \"%s\"", TypeHash, TypeAccSeq, TypeSig))
+	cmd.Flags().Bool(FlagIndexerV2, false, "Use indexer v2")
 
 	return cmd
 }

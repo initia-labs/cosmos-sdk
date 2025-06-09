@@ -29,6 +29,14 @@ func (c MockClient) BroadcastTxSync(_ context.Context, _ cmttypes.Tx) (*coretype
 	return nil, c.err
 }
 
+func (c MockClient) TxSearchV2(_ context.Context, _ string, _ bool, _ *int, _ *int, _ string) (*coretypes.ResultTxSearch, error) {
+	return nil, c.err
+}
+
+func (c MockClient) BlockSearchV2(_ context.Context, _ string, _ *int, _ *int, _ string) (*coretypes.ResultBlockSearch, error) {
+	return nil, c.err
+}
+
 func CreateContextWithErrorAndMode(err error, mode string) Context {
 	return Context{
 		Client:        MockClient{err: err},

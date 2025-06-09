@@ -27,7 +27,20 @@ type CometRPC interface {
 		page, perPage *int,
 		orderBy string,
 	) (*coretypes.ResultTxSearch, error)
+	TxSearchV2(
+		ctx context.Context,
+		query string,
+		prove bool,
+		page, perPage *int,
+		orderBy string,
+	) (*coretypes.ResultTxSearch, error)
 	BlockSearch(
+		ctx context.Context,
+		query string,
+		page, perPage *int,
+		orderBy string,
+	) (*coretypes.ResultBlockSearch, error)
+	BlockSearchV2(
 		ctx context.Context,
 		query string,
 		page, perPage *int,

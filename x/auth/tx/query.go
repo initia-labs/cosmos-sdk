@@ -23,6 +23,14 @@ import (
 // Note, if an empty orderBy is provided, the default behavior is ascending. If
 // negative values are provided for page or limit, defaults will be used.
 func QueryTxsByEvents(clientCtx client.Context, page, limit int, query, orderBy string) (*sdk.SearchTxsResult, error) {
+	return queryTxsByEvents(clientCtx, page, limit, query, orderBy, false)
+}
+
+func QueryTxsByEventsV2(clientCtx client.Context, page, limit int, query, orderBy string) (*sdk.SearchTxsResult, error) {
+	return queryTxsByEvents(clientCtx, page, limit, query, orderBy, true)
+}
+
+func queryTxsByEvents(clientCtx client.Context, page, limit int, query, orderBy string, indexerV2 bool) (*sdk.SearchTxsResult, error) {
 	if len(query) == 0 {
 		return nil, errors.New("query cannot be empty")
 	}
@@ -42,7 +50,12 @@ func QueryTxsByEvents(clientCtx client.Context, page, limit int, query, orderBy 
 		return nil, err
 	}
 
-	resTxs, err := node.TxSearch(context.Background(), query, false, &page, &limit, orderBy)
+	var resTxs *coretypes.ResultTxSearch
+	if indexerV2 {
+		resTxs, err = node.TxSearchV2(context.Background(), query, false, &page, &limit, orderBy)
+	} else {
+		resTxs, err = node.TxSearch(context.Background(), query, false, &page, &limit, orderBy)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to search for txs: %w", err)
 	}

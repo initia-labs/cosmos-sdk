@@ -47,13 +47,19 @@ func GetChainHeight(clientCtx client.Context) (int64, error) {
 //		  tx.height = 5                       # all txs of the fifth block
 //
 // For more information, see the /subscribe CometBFT RPC endpoint documentation
-func QueryBlocks(clientCtx client.Context, page, limit int, query, orderBy string) (*sdk.SearchBlocksResult, error) {
+func QueryBlocks(clientCtx client.Context, page, limit int, query, orderBy string, indexerV2 bool) (*sdk.SearchBlocksResult, error) {
 	node, err := clientCtx.GetNode()
 	if err != nil {
 		return nil, err
 	}
 
-	resBlocks, err := node.BlockSearch(context.Background(), query, &page, &limit, orderBy)
+	var resBlocks *coretypes.ResultBlockSearch
+	if indexerV2 {
+		resBlocks, err = node.BlockSearchV2(context.Background(), query, &page, &limit, orderBy)
+	} else {
+		resBlocks, err = node.BlockSearch(context.Background(), query, &page, &limit, orderBy)
+	}
+
 	if err != nil {
 		return nil, err
 	}

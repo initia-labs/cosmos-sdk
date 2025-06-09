@@ -194,8 +194,9 @@ for. Each module documents its respective events under 'xx_events.md'.
 			page, _ := cmd.Flags().GetInt(flags.FlagPage)
 			limit, _ := cmd.Flags().GetInt(flags.FlagLimit)
 			orderBy, _ := cmd.Flags().GetString(auth.FlagOrderBy)
+			indexerV2, _ := cmd.Flags().GetBool(auth.FlagIndexerV2)
 
-			blocks, err := rpc.QueryBlocks(clientCtx, page, limit, query, orderBy)
+			blocks, err := rpc.QueryBlocks(clientCtx, page, limit, query, orderBy, indexerV2)
 			if err != nil {
 				return err
 			}
@@ -209,6 +210,7 @@ for. Each module documents its respective events under 'xx_events.md'.
 	cmd.Flags().Int(flags.FlagLimit, query.DefaultLimit, "Query number of transactions results per page returned")
 	cmd.Flags().String(auth.FlagQuery, "", "The blocks events query per CometBFT's query semantics")
 	cmd.Flags().String(auth.FlagOrderBy, "", "The ordering semantics (asc|dsc)")
+	cmd.Flags().Bool(auth.FlagIndexerV2, false, "Use indexer v2")
 	_ = cmd.MarkFlagRequired(auth.FlagQuery)
 
 	return cmd
