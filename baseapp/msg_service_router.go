@@ -31,6 +31,7 @@ type MsgServiceRouter struct {
 	routes            map[string]MsgServiceHandler
 	hybridHandlers    map[string]func(ctx context.Context, req, resp protoiface.MessageV1) error
 	circuitBreaker    CircuitBreaker
+	contextDecorator  ContextDecorator
 }
 
 var _ gogogrpc.Server = &MsgServiceRouter{}
@@ -45,6 +46,14 @@ func NewMsgServiceRouter() *MsgServiceRouter {
 
 func (msr *MsgServiceRouter) SetCircuit(cb CircuitBreaker) {
 	msr.circuitBreaker = cb
+}
+
+// ContextDecorator defines a function type which decorates the context of a Msg service message.
+type ContextDecorator = func(ctx sdk.Context, msg sdk.Msg) sdk.Context
+
+// SetContextDecorator sets the decorator for the MsgServiceRouter.
+func (msr *MsgServiceRouter) SetContextDecorator(decorator ContextDecorator) {
+	msr.contextDecorator = decorator
 }
 
 // MsgServiceHandler defines a function type which handles Msg service message.
@@ -170,6 +179,10 @@ func (msr *MsgServiceRouter) registerMsgServiceHandler(sd *grpc.ServiceDesc, met
 
 	msr.routes[requestTypeName] = func(ctx sdk.Context, msg sdk.Msg) (*sdk.Result, error) {
 		ctx = ctx.WithEventManager(sdk.NewEventManager())
+		if msr.contextDecorator != nil {
+			ctx = msr.contextDecorator(ctx, msg)
+		}
+
 		interceptor := func(goCtx context.Context, _ any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 			goCtx = context.WithValue(goCtx, sdk.SdkContextKey, ctx)
 			return handler(goCtx, msg)
