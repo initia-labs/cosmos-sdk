@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	gogogrpc "github.com/cosmos/gogoproto/grpc"
 	grpcmiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -96,6 +97,17 @@ func (app *BaseApp) RegisterGRPCServerWithSkipCheckHeader(server gogogrpc.Server
 		return handler(grpcCtx, req)
 	}
 
+	// interceptor with method name
+	interceptorWithMethod := func(method string) grpc.UnaryServerInterceptor {
+		return func(grpcCtx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+			done := slowGRPCQueryLogger(app, method, req)
+			defer close(done)
+
+			// execute original interceptor
+			return interceptor(grpcCtx, req, info, handler)
+		}
+	}
+
 	// Loop through all services and methods, add the interceptor, and register
 	// the service.
 	for _, data := range app.GRPCQueryRouter().serviceData {
@@ -104,6 +116,7 @@ func (app *BaseApp) RegisterGRPCServerWithSkipCheckHeader(server gogogrpc.Server
 
 		for i, method := range desc.Methods {
 			methodHandler := method.Handler
+			interceptor := interceptorWithMethod(method.MethodName)
 			newMethods[i] = grpc.MethodDesc{
 				MethodName: method.MethodName,
 				Handler: func(srv any, ctx context.Context, dec func(any) error, _ grpc.UnaryServerInterceptor) (any, error) {
@@ -125,4 +138,20 @@ func (app *BaseApp) RegisterGRPCServerWithSkipCheckHeader(server gogogrpc.Server
 
 		server.RegisterService(newDesc, data.handler)
 	}
+}
+
+// slowGRPCQueryLogger logs slow GRPC queries
+func slowGRPCQueryLogger(app *BaseApp, method string, req interface{}) chan struct{} {
+	timer := time.NewTimer(time.Second)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-timer.C:
+			app.logger.Warn("Detected slow query", "method", method, "req", req)
+		case <-done:
+			return
+		}
+	}()
+
+	return done
 }
