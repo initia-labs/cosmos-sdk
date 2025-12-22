@@ -723,7 +723,11 @@ func TestABCI_CreateQueryContext(t *testing.T) {
 				})
 				require.NoError(t, err)
 			}
-			ctx, err := app.CreateQueryContext(tc.height, tc.prove)
+			ctx, closer, err := app.CreateQueryContext(tc.height, tc.prove)
+			if closer != nil {
+				defer closer.Close()
+			}
+
 			if tc.expErr {
 				require.Error(t, err)
 			} else {
@@ -754,7 +758,11 @@ var ctxTypes = []ctxType{QueryCtx, CheckTxCtx}
 func (c ctxType) GetCtx(t *testing.T, bapp *baseapp.BaseApp) sdk.Context {
 	t.Helper()
 	if c == QueryCtx {
-		ctx, err := bapp.CreateQueryContext(1, false)
+		ctx, closer, err := bapp.CreateQueryContext(1, false)
+		if closer != nil {
+			defer closer.Close()
+		}
+
 		require.NoError(t, err)
 		return ctx
 	} else if c == CheckTxCtx {

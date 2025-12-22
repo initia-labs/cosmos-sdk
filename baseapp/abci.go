@@ -3,6 +3,7 @@ package baseapp
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -1137,7 +1138,12 @@ func (app *BaseApp) getContextForProposal(ctx sdk.Context, height int64) sdk.Con
 }
 
 func (app *BaseApp) handleQueryGRPC(handler GRPCQueryHandler, req *abci.RequestQuery) *abci.ResponseQuery {
-	ctx, err := app.CreateQueryContext(req.Height, req.Prove)
+	ctx, closer, err := app.CreateQueryContext(req.Height, req.Prove)
+	if closer != nil {
+		defer func() {
+			closer.Close()
+		}()
+	}
 	if err != nil {
 		return sdkerrors.QueryResult(err, app.trace)
 	}
@@ -1186,9 +1192,12 @@ func checkNegativeHeight(height int64) error {
 
 // createQueryContext creates a new sdk.Context for a query, taking as args
 // the block height and whether the query needs a proof or not.
-func (app *BaseApp) CreateQueryContext(height int64, prove bool) (sdk.Context, error) {
+//
+// It returns an io.Closer which must be closed after the query is done if
+// the underlying multi-store supports it.
+func (app *BaseApp) CreateQueryContext(height int64, prove bool) (sdk.Context, io.Closer, error) {
 	if err := checkNegativeHeight(height); err != nil {
-		return sdk.Context{}, err
+		return sdk.Context{}, nil, err
 	}
 
 	// use custom query multi-store if provided
@@ -1199,11 +1208,11 @@ func (app *BaseApp) CreateQueryContext(height int64, prove bool) (sdk.Context, e
 
 	lastBlockHeight := qms.LatestVersion()
 	if lastBlockHeight == 0 {
-		return sdk.Context{}, errorsmod.Wrapf(sdkerrors.ErrInvalidHeight, "%s is not ready; please wait for first block", app.Name())
+		return sdk.Context{}, nil, errorsmod.Wrapf(sdkerrors.ErrInvalidHeight, "%s is not ready; please wait for first block", app.Name())
 	}
 
 	if height > lastBlockHeight {
-		return sdk.Context{},
+		return sdk.Context{}, nil,
 			errorsmod.Wrap(
 				sdkerrors.ErrInvalidHeight,
 				"cannot query with height in the future; please provide a valid height",
@@ -1216,7 +1225,7 @@ func (app *BaseApp) CreateQueryContext(height int64, prove bool) (sdk.Context, e
 	}
 
 	if height <= 1 && prove {
-		return sdk.Context{},
+		return sdk.Context{}, nil,
 			errorsmod.Wrap(
 				sdkerrors.ErrInvalidRequest,
 				"cannot query with proof when height <= 1; please provide a valid height",
@@ -1225,7 +1234,7 @@ func (app *BaseApp) CreateQueryContext(height int64, prove bool) (sdk.Context, e
 
 	cacheMS, err := qms.CacheMultiStoreWithVersion(height)
 	if err != nil {
-		return sdk.Context{},
+		return sdk.Context{}, nil,
 			errorsmod.Wrapf(
 				sdkerrors.ErrInvalidRequest,
 				"failed to load state at height %d; %s (latest height: %d)", height, err, lastBlockHeight,
@@ -1250,7 +1259,12 @@ func (app *BaseApp) CreateQueryContext(height int64, prove bool) (sdk.Context, e
 		}
 	}
 
-	return ctx, nil
+	// call closer if the multi-store supports it
+	if closer, ok := cacheMS.(io.Closer); ok {
+		return ctx, closer, nil
+	}
+
+	return ctx, nil, nil
 }
 
 // GetBlockRetentionHeight returns the height for which all blocks below this height
