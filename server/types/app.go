@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
+	cmtmempool "github.com/cometbft/cometbft/mempool"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmttypes "github.com/cometbft/cometbft/types"
 	dbm "github.com/cosmos/cosmos-db"
@@ -82,6 +83,14 @@ type (
 		Height int64
 		// ConsensusParams are the exported consensus params for ABCI.
 		ConsensusParams cmtproto.ConsensusParams
+	}
+
+	// MempoolEventConnector is optionally implemented by applications that
+	// receive CometBFT  ProxyMempool event channel after node startup.
+	// The app uses this channel to push EventTxInserted and EventTxRemoved
+	// events so the CometBFT reactor can manage gossip and tx caching.
+	MempoolEventConnector interface {
+		ConnectMempoolEvents(eventCh chan cmtmempool.AppMempoolEvent)
 	}
 
 	// AppExporter is a function that dumps all app state to

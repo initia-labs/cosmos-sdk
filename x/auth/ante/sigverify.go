@@ -286,11 +286,14 @@ func (svd SigVerificationDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, simul
 		}
 
 		// Check account sequence number.
-		if sig.Sequence != acc.GetSequence() {
-			return ctx, errorsmod.Wrapf(
-				sdkerrors.ErrWrongSequence,
-				"account sequence mismatch, expected %d, got %d", acc.GetSequence(), sig.Sequence,
-			)
+		// Skip sequence check in CheckTx/ReCheckTx mode
+		if !ctx.IsCheckTx() && !ctx.IsReCheckTx() {
+			if sig.Sequence != acc.GetSequence() {
+				return ctx, errorsmod.Wrapf(
+					sdkerrors.ErrWrongSequence,
+					"account sequence mismatch, expected %d, got %d", acc.GetSequence(), sig.Sequence,
+				)
+			}
 		}
 
 		// retrieve signer data

@@ -25,6 +25,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	"github.com/cosmos/cosmos-sdk/types/mempool"
 )
 
 // Supported ABCI Query prefixes and paths
@@ -963,6 +964,10 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 
 	if app.prepareCheckStater != nil {
 		app.prepareCheckStater(app.checkState.Context())
+	}
+
+	if promoter, ok := app.mempool.(mempool.QueuePromoter); ok {
+		promoter.PromoteQueued(app.checkState.Context())
 	}
 
 	// The SnapshotIfApplicable method will create the snapshot by starting the goroutine
