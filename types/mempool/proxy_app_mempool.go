@@ -311,15 +311,21 @@ func (m *ProxyAppMempool) Remove(tx sdk.Tx) error {
 		return err
 	}
 
-	if m.removeFromActive(sender, nonce) {
-		return nil
+	entry, pool := m.findTx(sender, nonce)
+	if entry == nil {
+		return ErrTxNotFound
 	}
 
-	if m.removeFromQueued(sender, nonce) {
-		return nil
+	txBytes := entry.txBytes
+	switch pool {
+	case "active":
+		m.removeFromActive(sender, nonce)
+	case "queued":
+		m.removeFromQueued(sender, nonce)
 	}
+	m.pushEvent(cmtmempool.EventTxRemoved, txBytes)
 
-	return ErrTxNotFound
+	return nil
 }
 
 // PromoteQueued evaluates queued and active txs against current account
