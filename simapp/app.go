@@ -32,6 +32,7 @@ import (
 	upgradekeeper "cosmossdk.io/x/upgrade/keeper"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	abci "github.com/cometbft/cometbft/abci/types"
+
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/spf13/cast"
@@ -53,6 +54,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/std"
 	testdata_pulsar "github.com/cosmos/cosmos-sdk/testutil/testdata/testpb"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkmempool "github.com/cosmos/cosmos-sdk/types/mempool"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/types/msgservice"
 	sigtypes "github.com/cosmos/cosmos-sdk/types/tx/signing"
@@ -249,6 +251,18 @@ func NewSimApp(
 	}
 	baseAppOptions = append(baseAppOptions, voteExtOp, baseapp.SetOptimisticExecution())
 
+	// create the ProxyAppMempool and set it as a BaseApp option so it is used
+	// before the default proposal handler is created in NewBaseApp.
+	proxyAppMempool := sdkmempool.NewProxyAppMempool(
+		sdkmempool.ProxyAppMempoolConfig{
+			MaxTxsPerSender: 16,
+			MaxTotalTxs:     500,
+		},
+		nil,
+		txConfig.TxEncoder(),
+	)
+	baseAppOptions = append(baseAppOptions, baseapp.SetMempool(proxyAppMempool))
+
 	bApp := baseapp.NewBaseApp(appName, logger, db, txConfig.TxDecoder(), baseAppOptions...)
 	bApp.SetCommitMultiStoreTracer(traceStore)
 	bApp.SetVersion(version.Version)
@@ -287,6 +301,9 @@ func NewSimApp(
 
 	// add keepers
 	app.AccountKeeper = authkeeper.NewAccountKeeper(appCodec, runtime.NewKVStoreService(keys[authtypes.StoreKey]), authtypes.ProtoBaseAccount, maccPerms, authcodec.NewBech32Codec(sdk.Bech32MainPrefix), sdk.Bech32MainPrefix, authtypes.NewModuleAddress(govtypes.ModuleName).String())
+
+	// wire the AccountKeeper
+	proxyAppMempool.SetAccountKeeper(app.AccountKeeper)
 
 	app.BankKeeper = bankkeeper.NewBaseKeeper(
 		appCodec,
@@ -565,7 +582,8 @@ func NewSimApp(
 }
 
 func (app *SimApp) setAnteHandler(txConfig client.TxConfig) {
-	anteHandler, err := NewAnteHandler(
+	// Full ante handler for PrepareProposal/ProcessProposal/FinalizeBlock
+	fullHandler, err := NewAnteHandler(
 		HandlerOptions{
 			ante.HandlerOptions{
 				AccountKeeper:   app.AccountKeeper,
@@ -581,8 +599,17 @@ func (app *SimApp) setAnteHandler(txConfig client.TxConfig) {
 		panic(err)
 	}
 
-	// Set the AnteHandler for the app
-	app.SetAnteHandler(anteHandler)
+	minimalHandler, err := ante.NewMinimalAnteHandler(ante.MinimalHandlerOptions{
+		AccountKeeper:   app.AccountKeeper,
+		SignModeHandler: txConfig.SignModeHandler(),
+		SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	dualHandler := ante.NewDualAnteHandler(minimalHandler, fullHandler)
+	app.SetAnteHandler(dualHandler)
 }
 
 func (app *SimApp) setPostHandler() {

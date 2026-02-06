@@ -16,6 +16,7 @@ import (
 	cmtcmd "github.com/cometbft/cometbft/cmd/cometbft/commands"
 	cmtcfg "github.com/cometbft/cometbft/config"
 	cmtjson "github.com/cometbft/cometbft/libs/json"
+	cmtmempool "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/node"
 	"github.com/cometbft/cometbft/p2p"
 	pvm "github.com/cometbft/cometbft/privval"
@@ -327,6 +328,8 @@ func startInProcess(svrCtx *Context, svrCfg serverconfig.Config, clientCtx clien
 		}
 		defer cleanupFn()
 
+		connectMempoolEvents(tmNode.Mempool(), app)
+
 		// Add the tx service to the gRPC router. We only need to register this
 		// service if API or gRPC is enabled, and avoid doing so in the general
 		// case, because it spawns a new local CometBFT RPC client.
@@ -401,6 +404,20 @@ func startCmtNode(
 	}
 
 	return tmNode, cleanupFn, nil
+}
+
+// connectMempoolEvents wires the CometBFT mempool event channel to the
+// application if both sides support it.
+func connectMempoolEvents(mp cmtmempool.Mempool, app types.Application) {
+	ep, ok := mp.(cmtmempool.EventProvider)
+	if !ok {
+		return
+	}
+	connector, ok := app.(types.MempoolEventConnector)
+	if !ok {
+		return
+	}
+	connector.ConnectMempoolEvents(ep.AppEventCh())
 }
 
 func getAndValidateConfig(svrCtx *Context) (serverconfig.Config, error) {

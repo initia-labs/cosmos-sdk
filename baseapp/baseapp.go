@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/errors"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/tmhash"
+	cmtmempool "github.com/cometbft/cometbft/mempool"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
@@ -417,6 +418,19 @@ func (app *BaseApp) AnteHandler() sdk.AnteHandler {
 // Mempool returns the Mempool of the app.
 func (app *BaseApp) Mempool() mempool.Mempool {
 	return app.mempool
+}
+
+// ConnectMempoolEvents implements servertypes.MempoolEventConnector.
+func (app *BaseApp) ConnectMempoolEvents(eventCh chan cmtmempool.AppMempoolEvent) {
+	if receiver, ok := app.mempool.(mempool.EventReceiver); ok {
+		receiver.SetEventCh(eventCh)
+	}
+}
+
+// GetContextForSimulate returns a non-mutating context derived from the latest
+// committed state, suitable for transaction simulation (e.g. mempool cleanup).
+func (app *BaseApp) GetContextForSimulate(txBytes []byte) sdk.Context {
+	return app.getContextForTx(execModeSimulate, txBytes)
 }
 
 // Init initializes the app. It seals the app, preventing any
@@ -1009,7 +1023,8 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte) (gInfo sdk.GasInfo, res
 
 	switch mode {
 	case execModeCheck:
-		if err := app.mempool.Insert(mempoolCtx, tx); err != nil {
+		insertCtx := context.WithValue(mempoolCtx, mempool.TxBytesContextKey{}, txBytes)
+		if err := app.mempool.Insert(insertCtx, tx); err != nil {
 			return gInfo, nil, anteEvents, err
 		}
 
