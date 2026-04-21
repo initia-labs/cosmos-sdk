@@ -787,7 +787,10 @@ func TestABCI_CreateQueryContext(t *testing.T) {
 			if tc.height > tc.headerHeight {
 				height = 0
 			}
-			ctx, err := app.CreateQueryContext(height, tc.prove)
+			ctx, closer, err := app.CreateQueryContext(height, tc.prove)
+			if closer != nil {
+				defer closer.Close()
+			}
 			if tc.expErr {
 				require.Error(t, err)
 			} else {
@@ -818,7 +821,10 @@ func TestABCI_CreateQueryContextWithCheckHeader(t *testing.T) {
 				InitialHeight: headerHeight,
 			})
 			require.NoError(t, err)
-			ctx, err := app.CreateQueryContextWithCheckHeader(0, true, tc.checkHeader)
+			ctx, closer, err := app.CreateQueryContextWithCheckHeader(0, true, tc.checkHeader)
+			if closer != nil {
+				defer closer.Close()
+			}
 			if tc.expErr {
 				require.Error(t, err)
 			} else {
@@ -854,7 +860,10 @@ func TestABCI_CreateQueryContext_Before_Set_CheckState(t *testing.T) {
 			ABCIListeners: []storetypes.ABCIListener{
 				&mockABCIListener{
 					ListenCommitFn: func(context.Context, abci.ResponseCommit, []*storetypes.StoreKVPair) error {
-						qCtx, qErr := app.CreateQueryContext(0, true)
+						qCtx, closer, qErr := app.CreateQueryContext(0, true)
+						if closer != nil {
+							defer closer.Close()
+						}
 						queryCtx = &qCtx
 						queryCtxErr = qErr
 						return nil
@@ -894,7 +903,10 @@ func (c ctxType) GetCtx(t *testing.T, bapp *baseapp.BaseApp) sdk.Context {
 	t.Helper()
 	switch c {
 	case QueryCtx:
-		ctx, err := bapp.CreateQueryContext(1, false)
+		ctx, closer, err := bapp.CreateQueryContext(1, false)
+		if closer != nil {
+			defer closer.Close()
+		}
 		require.NoError(t, err)
 		return ctx
 	case CheckTxCtx:

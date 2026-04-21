@@ -62,7 +62,10 @@ func (app *BaseApp) RegisterGRPCServerWithSkipCheckHeader(server gogogrpc.Server
 
 		// Create the sdk.Context. Passing false as 2nd arg, as we can't
 		// actually support proofs with gRPC right now.
-		sdkCtx, err := app.CreateQueryContextWithCheckHeader(height, false, !skipCheckHeader)
+		sdkCtx, closer, err := app.CreateQueryContextWithCheckHeader(height, false, !skipCheckHeader)
+		if closer != nil {
+			defer closer.Close()
+		}
 		if err != nil {
 			return nil, err
 		}
