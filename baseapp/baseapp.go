@@ -127,6 +127,7 @@ type BaseApp struct {
 	prepareProposalState *state
 	processProposalState *state
 	finalizeBlockState   *state
+	stateMut             sync.Mutex
 
 	// An inter-block write-through cache provided to the context during the ABCI
 	// FinalizeBlock call.
@@ -523,6 +524,9 @@ func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 			WithHeaderInfo(headerInfo),
 	}
 
+	app.stateMut.Lock()
+	defer app.stateMut.Unlock()
+
 	switch mode {
 	case execModeCheck:
 		// Simulations never persist state, so they can reuse the base snapshot
@@ -669,6 +673,9 @@ func validateBasicTxMsgs(msgs []sdk.Msg) error {
 }
 
 func (app *BaseApp) getState(mode execMode) *state {
+	app.stateMut.Lock()
+	defer app.stateMut.Unlock()
+
 	switch mode {
 	case execModeFinalize:
 		return app.finalizeBlockState
@@ -688,6 +695,24 @@ func (app *BaseApp) getState(mode execMode) *state {
 		return app.simulationState
 	default:
 		return app.checkState
+	}
+}
+
+func (app *BaseApp) clearState(mode execMode) {
+	app.stateMut.Lock()
+	defer app.stateMut.Unlock()
+
+	switch mode {
+	case execModeFinalize:
+		app.finalizeBlockState = nil
+	case execModePrepareProposal:
+		app.prepareProposalState = nil
+	case execModeProcessProposal:
+		app.processProposalState = nil
+	case execModeSimulate:
+		app.simulationState = nil
+	default:
+		app.checkState = nil
 	}
 }
 
@@ -754,7 +779,8 @@ func (app *BaseApp) cacheTxContext(ctx sdk.Context, txBytes []byte) (sdk.Context
 func (app *BaseApp) preBlock(req *abci.RequestFinalizeBlock) ([]abci.Event, error) {
 	var events []abci.Event
 	if app.preBlocker != nil {
-		ctx := app.finalizeBlockState.Context().WithEventManager(sdk.NewEventManager())
+		finalizeBlockState := app.getState(execModeFinalize)
+		ctx := finalizeBlockState.Context().WithEventManager(sdk.NewEventManager())
 		rsp, err := app.preBlocker(ctx, req)
 		if err != nil {
 			return nil, err
@@ -766,7 +792,7 @@ func (app *BaseApp) preBlock(req *abci.RequestFinalizeBlock) ([]abci.Event, erro
 			// GasMeter must be set after we get a context with updated consensus params.
 			gasMeter := app.getBlockGasMeter(ctx)
 			ctx = ctx.WithBlockGasMeter(gasMeter)
-			app.finalizeBlockState.SetContext(ctx)
+			finalizeBlockState.SetContext(ctx)
 		}
 		events = ctx.EventManager().ABCIEvents()
 		events = sdk.MarkEventsToIndex(events, app.indexEvents)
@@ -781,7 +807,8 @@ func (app *BaseApp) beginBlock(_ *abci.RequestFinalizeBlock) (sdk.BeginBlock, er
 	)
 
 	if app.beginBlocker != nil {
-		resp, err = app.beginBlocker(app.finalizeBlockState.Context())
+		finalizeBlockState := app.getState(execModeFinalize)
+		resp, err = app.beginBlocker(finalizeBlockState.Context())
 		if err != nil {
 			return resp, err
 		}
@@ -843,7 +870,8 @@ func (app *BaseApp) endBlock(_ context.Context) (sdk.EndBlock, error) {
 	var endblock sdk.EndBlock
 
 	if app.endBlocker != nil {
-		eb, err := app.endBlocker(app.finalizeBlockState.Context())
+		finalizeBlockState := app.getState(execModeFinalize)
+		eb, err := app.endBlocker(finalizeBlockState.Context())
 		if err != nil {
 			return endblock, err
 		}
